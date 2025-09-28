@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import axios from 'axios';
 import { toast, Toaster } from 'react-hot-toast';
 
@@ -43,7 +43,19 @@ export default function WorkoutTracker() {
     sets: [{ weight: 0, reps: 0, rpe: 0 }]
   }]);
 
-  const loadWorkouts = async () => {
+  const createUser = async () => {
+    try {
+      await axios.post(`${API_URL}/users`, {
+        username: user,
+        email: `${user}@example.com`,
+        password: 'demo123'
+      });
+    } catch (error) {
+      console.error('Error creating user:', error);
+    }
+  };
+
+  const loadWorkouts = useCallback(async () => {
     try {
       const response = await axios.get(`${API_URL}/workouts/${user}`);
       setWorkouts(response.data.workouts || []);
@@ -63,23 +75,11 @@ export default function WorkoutTracker() {
         toast.error('Failed to load workouts');
       }
     }
-  };
+  }, [user]);
 
   useEffect(() => {
     loadWorkouts();
-  }, []);
-
-  const createUser = async () => {
-    try {
-      await axios.post(`${API_URL}/users`, {
-        username: user,
-        email: `${user}@example.com`,
-        password: 'demo123'
-      });
-    } catch (error) {
-      console.error('Error creating user:', error);
-    }
-  };
+  }, [loadWorkouts]);
 
   const saveWorkout = async () => {
     try {
@@ -126,13 +126,13 @@ export default function WorkoutTracker() {
 
   const updateExercise = (index: number, field: keyof Exercise, value: string | number) => {
     const newExercises = [...exercises];
-    (newExercises[index] as Record<string, unknown>)[field] = value;
+    (newExercises[index] as unknown as Record<string, unknown>)[field] = value;
     setExercises(newExercises);
   };
 
   const updateSet = (exerciseIndex: number, setIndex: number, field: keyof Set, value: number) => {
     const newExercises = [...exercises];
-    (newExercises[exerciseIndex].sets[setIndex] as Record<string, unknown>)[field] = value;
+    (newExercises[exerciseIndex].sets[setIndex] as unknown as Record<string, unknown>)[field] = value;
     setExercises(newExercises);
   };
 
