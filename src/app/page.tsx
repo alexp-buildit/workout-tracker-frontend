@@ -50,22 +50,45 @@ export default function WorkoutTracker() {
 
   const loadWorkouts = async () => {
     try {
-      const response = await axios.get(`${API_URL}/workouts`);
-      setWorkouts(response.data);
+      const response = await axios.get(`${API_URL}/workouts/${user}`);
+      setWorkouts(response.data.workouts || []);
     } catch (error) {
       console.error('Error loading workouts:', error);
-      toast.error('Failed to load workouts');
+      // If user doesn't exist, create them first
+      if (error.response?.status === 404) {
+        await createUser();
+        // Try loading workouts again
+        try {
+          const response = await axios.get(`${API_URL}/workouts/${user}`);
+          setWorkouts(response.data.workouts || []);
+        } catch (secondError) {
+          toast.error('Failed to load workouts');
+        }
+      } else {
+        toast.error('Failed to load workouts');
+      }
+    }
+  };
+
+  const createUser = async () => {
+    try {
+      await axios.post(`${API_URL}/users`, {
+        username: user,
+        email: `${user}@example.com`,
+        password: 'demo123'
+      });
+    } catch (error) {
+      console.error('Error creating user:', error);
     }
   };
 
   const saveWorkout = async () => {
     try {
-      const workout: Workout = {
-        id: Date.now().toString(),
+      const workout = {
+        username: user,
         type: workoutType,
         date: workoutDate,
-        startTime: new Date(),
-        endTime: new Date(),
+        startTime: new Date().toISOString(),
         exercises: exercises.filter(ex => ex.name.trim() !== '')
       };
 
