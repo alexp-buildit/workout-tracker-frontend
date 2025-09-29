@@ -474,28 +474,36 @@ export default function WorkoutTracker() {
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-blue-900 to-slate-900 text-white flex items-center justify-center">
         <Toaster position="top-right" />
         <div className="bg-white/10 backdrop-blur-lg rounded-lg p-8 border border-orange-500/20 w-full max-w-md">
-          <h1 className="text-3xl font-bold text-center mb-8 text-orange-400">💪 Workout Tracker</h1>
+          <h1 className="text-3xl font-bold text-center mb-4 text-orange-400">💪 Workout Tracker</h1>
+          <p className="text-center text-gray-300 mb-8">Login with existing username or create new account</p>
           <div className="space-y-4">
-            <input
-              type="text"
-              placeholder="Enter username"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full p-3 bg-black/20 border border-orange-500/30 rounded-lg text-white placeholder-gray-400"
-            />
-            <input
-              type="tel"
-              placeholder="Phone number (optional for new accounts)"
-              value={phoneNumber}
-              onChange={(e) => setPhoneNumber(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && login()}
-              className="w-full p-3 bg-black/20 border border-orange-500/30 rounded-lg text-white placeholder-gray-400"
-            />
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Username</label>
+              <input
+                type="text"
+                placeholder="Enter your username"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full p-3 bg-black/20 border border-orange-500/30 rounded-lg text-white placeholder-gray-400"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-300 mb-2">Phone Number <span className="text-gray-500">(for new accounts)</span></label>
+              <input
+                type="tel"
+                placeholder="Enter phone number to create account"
+                value={phoneNumber}
+                onChange={(e) => setPhoneNumber(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && login()}
+                className="w-full p-3 bg-black/20 border border-orange-500/30 rounded-lg text-white placeholder-gray-400"
+              />
+              <p className="text-xs text-gray-500 mt-1">Leave blank if you already have an account</p>
+            </div>
             <button
               onClick={login}
               className="w-full bg-orange-500 hover:bg-orange-600 py-3 rounded-lg font-semibold transition-colors"
             >
-              Login
+              {phoneNumber.trim() ? 'Create Account & Login' : 'Login'}
             </button>
           </div>
         </div>
