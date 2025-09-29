@@ -1,6 +1,7 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect } from 'react';
+import axios from 'axios';
 import { toast, Toaster } from 'react-hot-toast';
 
 interface Set {
@@ -31,6 +32,8 @@ interface User {
 }
 
 // Complete Master Exercise List from PRD
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'https://workout-tracker-backend-f150.onrender.com/api';
+
 const MASTER_EXERCISE_LIST = [
   'Bench Press', 'Incline Bench Press', 'Decline Bench Press', 'Dumbbell Press', 'Incline Dumbbell Press',
   'Dumbbell Flyes', 'Cable Flyes', 'Push-ups', 'Dips', 'Overhead Press', 'Arnold Press', 'Lateral Raises',
@@ -136,18 +139,44 @@ export default function WorkoutTracker() {
     return () => clearInterval(autoSaveInterval);
   }, [activeWorkout, exercises, currentUser]);
 
-  const login = () => {
+  const login = async () => {
     if (!username.trim()) {
       toast.error('Please enter a username');
       return;
     }
 
-    const user = { username: username.trim() };
-    setCurrentUser(user);
-    setIsLoggedIn(true);
-    localStorage.setItem('workoutTrackerUser', JSON.stringify(user));
-    toast.success(`Welcome, ${username}!`);
-    loadWorkouts(username);
+    try {
+      // Try to get existing user or create new one
+      await axios.get(`${API_URL}/users/${username.trim()}`);
+      const user = { username: username.trim() };
+      setCurrentUser(user);
+      setIsLoggedIn(true);
+      localStorage.setItem('workoutTrackerUser', JSON.stringify(user));
+      toast.success(`Welcome back, ${username}!`);
+      loadWorkouts(username);
+    } catch (error: unknown) {
+      if ((error as { response?: { status?: number } })?.response?.status === 404) {
+        // User doesn't exist, create new user
+        try {
+          await axios.post(`${API_URL}/users`, {
+            username: username.trim(),
+            phone: '000-000-0000' // Default phone for now
+          });
+          const user = { username: username.trim() };
+          setCurrentUser(user);
+          setIsLoggedIn(true);
+          localStorage.setItem('workoutTrackerUser', JSON.stringify(user));
+          toast.success(`Welcome, ${username}! Account created.`);
+          loadWorkouts(username);
+        } catch (createError) {
+          console.error('Create user error:', createError);
+          toast.error('Failed to create account');
+        }
+      } else {
+        console.error('Login error:', error);
+        toast.error('Failed to login');
+      }
+    }
   };
 
   const logout = () => {
@@ -159,22 +188,48 @@ export default function WorkoutTracker() {
     toast.success('Logged out successfully');
   };
 
-  const loadWorkouts = (username: string) => {
-    const savedWorkouts = localStorage.getItem(`workouts_${username}`);
-    if (savedWorkouts) {
-      const parsed = JSON.parse(savedWorkouts).map((w: any) => ({
-        ...w,
-        startTime: new Date(w.startTime),
-        endTime: w.endTime ? new Date(w.endTime) : undefined
-      }));
+  const loadWorkouts = async (username: string) => {
+    try {
+      const response = await axios.get(`${API_URL}/workouts/${username}`);
+      const workoutsData = response.data.workouts || [];
+      const parsed = workoutsData.map((w: unknown) => {
+        const workout = w as Record<string, unknown>;
+        return {
+          ...workout,
+          startTime: new Date(workout.startTime as string),
+          endTime: workout.endTime ? new Date(workout.endTime as string) : undefined
+        };
+      });
       setWorkouts(parsed);
+    } catch (error: unknown) {
+      if ((error as { response?: { status?: number } })?.response?.status !== 404) {
+        console.error('Load workouts error:', error);
+        toast.error('Failed to load workouts');
+      }
+      setWorkouts([]);
     }
   };
 
-  const saveWorkouts = (workoutsToSave: Workout[]) => {
-    if (currentUser) {
-      localStorage.setItem(`workouts_${currentUser.username}`, JSON.stringify(workoutsToSave));
-      setWorkouts(workoutsToSave);
+  const saveWorkout = async (workout: Workout) => {
+    if (!currentUser) return;
+
+    try {
+      await axios.post(`${API_URL}/workouts`, {
+        username: currentUser.username,
+        type: workout.type,
+        date: workout.date,
+        startTime: workout.startTime,
+        endTime: workout.endTime,
+        duration: workout.duration,
+        exercises: workout.exercises
+      });
+
+      // Update local state
+      const updatedWorkouts = workouts.filter(w => w.id !== workout.id);
+      setWorkouts([...updatedWorkouts, workout]);
+    } catch (error) {
+      console.error('Save workout error:', error);
+      throw error;
     }
   };
 
@@ -190,14 +245,14 @@ export default function WorkoutTracker() {
           exercises: filteredExercises
         };
 
-        const existingWorkouts = workouts.filter(w => w.id !== activeWorkout.id);
-        saveWorkouts([...existingWorkouts, updatedWorkout]);
+        await saveWorkout(updatedWorkout);
         setActiveWorkout(updatedWorkout);
 
         toast.success('💾 Auto-saved!', { duration: 1500 });
       }
     } catch (error) {
       console.error('Auto-save error:', error);
+      toast.error('Auto-save failed');
     } finally {
       setIsAutoSaving(false);
     }
@@ -223,7 +278,7 @@ export default function WorkoutTracker() {
     toast.success('Workout started!');
   };
 
-  const finishWorkout = () => {
+  const finishWorkout = async () => {
     if (!activeWorkout || !currentUser) return;
 
     const endTime = new Date();
@@ -236,15 +291,17 @@ export default function WorkoutTracker() {
       exercises: exercises.filter(ex => ex.name.trim() !== '')
     };
 
-    const existingWorkouts = workouts.filter(w => w.id !== activeWorkout.id);
-    saveWorkouts([...existingWorkouts, completedWorkout]);
-
-    setActiveWorkout(null);
-    setWorkoutTimer(0);
-    toast.success(`Workout completed! Duration: ${duration} minutes`);
+    try {
+      await saveWorkout(completedWorkout);
+      setActiveWorkout(null);
+      setWorkoutTimer(0);
+      toast.success(`Workout completed! Duration: ${duration} minutes`);
+    } catch {
+      toast.error('Failed to save workout');
+    }
   };
 
-  const saveAndResumeWorkout = () => {
+  const saveAndResumeWorkout = async () => {
     if (!activeWorkout || !currentUser) return;
 
     const filteredExercises = exercises.filter(ex => ex.name.trim() !== '');
@@ -253,10 +310,12 @@ export default function WorkoutTracker() {
       exercises: filteredExercises
     };
 
-    const existingWorkouts = workouts.filter(w => w.id !== activeWorkout.id);
-    saveWorkouts([...existingWorkouts, savedWorkout]);
-
-    toast.success('Workout saved!');
+    try {
+      await saveWorkout(savedWorkout);
+      toast.success('Workout saved!');
+    } catch {
+      toast.error('Failed to save workout');
+    }
   };
 
   // Exercise functions
@@ -277,13 +336,13 @@ export default function WorkoutTracker() {
 
   const updateExercise = (index: number, field: keyof Exercise, value: string | number) => {
     const newExercises = [...exercises];
-    (newExercises[index] as any)[field] = value;
+    (newExercises[index] as unknown as Record<string, unknown>)[field] = value;
     setExercises(newExercises);
   };
 
   const updateSet = (exerciseIndex: number, setIndex: number, field: keyof Set, value: number) => {
     const newExercises = [...exercises];
-    (newExercises[exerciseIndex].sets[setIndex] as any)[field] = value;
+    (newExercises[exerciseIndex].sets[setIndex] as unknown as Record<string, unknown>)[field] = value;
     setExercises(newExercises);
   };
 
@@ -325,7 +384,6 @@ export default function WorkoutTracker() {
     const year = currentDate.getFullYear();
     const month = currentDate.getMonth();
     const firstDay = new Date(year, month, 1);
-    const lastDay = new Date(year, month + 1, 0);
     const startDate = new Date(firstDay);
     startDate.setDate(startDate.getDate() - firstDay.getDay());
 
@@ -385,47 +443,6 @@ export default function WorkoutTracker() {
     return { totalWorkouts, avgDuration, avgRPE, daysPerWeek };
   };
 
-  const getExerciseAnalytics = (exerciseName: string, equipment?: string) => {
-    const exerciseWorkouts = workouts.filter(workout =>
-      workout.exercises.some(ex =>
-        ex.name.toLowerCase() === exerciseName.toLowerCase() &&
-        (!equipment || ex.equipment === equipment)
-      )
-    );
-
-    let maxWeight = 0;
-    let totalVolume = 0;
-    let timesPerformed = 0;
-    let totalRPE = 0;
-    let rpeCount = 0;
-    const allSets: any[] = [];
-
-    exerciseWorkouts.forEach(workout => {
-      workout.exercises.forEach(exercise => {
-        if (exercise.name.toLowerCase() === exerciseName.toLowerCase() &&
-            (!equipment || exercise.equipment === equipment)) {
-          timesPerformed++;
-          exercise.sets.forEach(set => {
-            maxWeight = Math.max(maxWeight, set.weight);
-            totalVolume += set.weight * set.reps;
-            if (set.rpe) {
-              totalRPE += set.rpe;
-              rpeCount++;
-            }
-            allSets.push({ ...set, date: workout.date });
-          });
-        }
-      });
-    });
-
-    return {
-      maxWeight,
-      totalVolume: Math.round(totalVolume * 10) / 10,
-      timesPerformed,
-      avgRPE: rpeCount > 0 ? Math.round((totalRPE / rpeCount) * 10) / 10 : 0,
-      sets: allSets.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-    };
-  };
 
   const formatTime = (seconds: number) => {
     const hours = Math.floor(seconds / 3600);
